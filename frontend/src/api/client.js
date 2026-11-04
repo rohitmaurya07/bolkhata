@@ -82,9 +82,11 @@ export const api = {
     }
     return data;
   },
-  getTransactionSummary: (period = 'today', language) => {
+  getTransactionSummary: (period = 'today', language, startDate, endDate) => {
     const params = new URLSearchParams({ period });
     if (language) params.append('language', language);
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
     return request(`/transactions/summary?${params.toString()}`);
   },
   createTransaction: (body) => request('/transactions', { method: 'POST', body: JSON.stringify(body) }),
@@ -111,7 +113,19 @@ export const api = {
   createCategory: (body) => request('/categories', { method: 'POST', body: JSON.stringify(body) }),
 
   // Export URLs
-  getCSVUrl: (period) => `${API_BASE}/export/csv${period ? `?period=${period}` : ''}`,
-  getPDFUrl: (period) => `${API_BASE}/export/pdf${period ? `?period=${period}` : ''}`,
+  getCSVUrl: (period, startDate, endDate) => {
+    const params = new URLSearchParams();
+    if (period) params.append('period', period);
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+    return `${API_BASE}/export/csv?${params.toString()}`;
+  },
+  getPDFUrl: (period, startDate, endDate) => {
+    const params = new URLSearchParams();
+    if (period) params.append('period', period);
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+    return `${API_BASE}/export/pdf?${params.toString()}`;
+  },
 };
 

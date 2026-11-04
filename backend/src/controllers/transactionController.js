@@ -30,6 +30,11 @@ export function getDateRange(period, customStart, customEnd) {
     start.setHours(0, 0, 0, 0);
     end = new Date(customEnd);
     end.setHours(23, 59, 59, 999);
+  } else if (period === 'custom' && customStart && !customEnd) {
+    start = new Date(customStart);
+    start.setHours(0, 0, 0, 0);
+    end = new Date(customStart);
+    end.setHours(23, 59, 59, 999);
   } else {
     // Default: all or wide range
     start = new Date(0);
@@ -116,13 +121,18 @@ export const getTransactions = async (req, res, next) => {
 
     const query = { user: req.user._id };
 
-    if (period) {
+    if (period && period !== 'all') {
       const { start, end } = getDateRange(period, startDate, endDate);
       query.date = { $gte: start, $lte: end };
     } else if (startDate && endDate) {
       query.date = {
         $gte: new Date(new Date(startDate).setHours(0, 0, 0, 0)),
         $lte: new Date(new Date(endDate).setHours(23, 59, 59, 999))
+      };
+    } else if (startDate) {
+      query.date = {
+        $gte: new Date(new Date(startDate).setHours(0, 0, 0, 0)),
+        $lte: new Date(new Date(startDate).setHours(23, 59, 59, 999))
       };
     }
 
@@ -175,8 +185,8 @@ export const getTransactions = async (req, res, next) => {
  */
 export const getTransactionSummary = async (req, res, next) => {
   try {
-    const { period = 'today', language } = req.query;
-    const { start, end } = getDateRange(period);
+    const { period = 'today', language, startDate, endDate } = req.query;
+    const { start, end } = getDateRange(period, startDate, endDate);
 
     const userLang = language || req.user.preferredLanguage || 'hi';
 

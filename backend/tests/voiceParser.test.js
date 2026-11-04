@@ -73,3 +73,25 @@ test('Voice Parser: Ambiguous input with no amount should flag isAmbiguous: true
   assert.equal(result.isValid, false);
 });
 
+test('Voice Parser: Yesterday date extraction "Kal 200 rupaye petrol"', () => {
+  const result = parseVoiceInput('Kal 200 rupaye petrol');
+  assert.equal(result.isValid, true);
+  assert.equal(result.data.amount, 200);
+  assert.equal(result.data.category, 'travel');
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  assert.equal(new Date(result.data.date).getDate(), yesterday.getDate());
+});
+
+test('Voice Parser: Day before yesterday "Parso 300 rupaye kharch kiye"', () => {
+  const result = parseVoiceInput('Parso 300 rupaye kharch kiye');
+  assert.equal(result.isValid, true);
+  assert.equal(result.data.amount, 300);
+  const now = new Date();
+  const dayBefore = new Date(now);
+  dayBefore.setDate(dayBefore.getDate() - 2);
+  assert.equal(new Date(result.data.date).getDate(), dayBefore.getDate());
+});
+
+

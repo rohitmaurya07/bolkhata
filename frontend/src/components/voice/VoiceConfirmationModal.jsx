@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Check, X, RotateCcw, Edit3, AlertTriangle, ArrowDownRight, ArrowUpRight, Volume2 } from 'lucide-react';
+import { Check, X, RotateCcw, Edit3, AlertTriangle, ArrowDownRight, ArrowUpRight, Volume2, Calendar } from 'lucide-react';
 import { closeConfirmationModal, openVoiceModal } from '../../store/uiSlice.js';
 import { addTransaction } from '../../store/transactionSlice.js';
 import { addPlannedExpense } from '../../store/plannedSlice.js';
@@ -88,6 +88,46 @@ export default function VoiceConfirmationModal() {
   const handleTryAgain = () => {
     dispatch(closeConfirmationModal());
     dispatch(openVoiceModal());
+  };
+
+  const toDateInputValue = (d) => {
+    if (!d) return new Date().toISOString().split('T')[0];
+    const dateObj = new Date(d);
+    if (isNaN(dateObj.getTime())) return new Date().toISOString().split('T')[0];
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const handleSetQuickDate = (daysAgo) => {
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    setEditableData({ ...editableData, date: d.toISOString() });
+  };
+
+  const formatDisplayDate = (d) => {
+    if (!d) return getTranslation(language, 'today');
+    const dateObj = new Date(d);
+    if (isNaN(dateObj.getTime())) return '';
+    const today = new Date();
+    const isToday = dateObj.toDateString() === today.toDateString();
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = dateObj.toDateString() === yesterday.toDateString();
+
+    const formatted = dateObj.toLocaleDateString(
+      language === 'hi' ? 'hi-IN' : language === 'pa' ? 'pa-IN' : 'en-IN',
+      { day: 'numeric', month: 'short' }
+    );
+
+    if (isToday) return `${getTranslation(language, 'today')} (${formatted})`;
+    if (isYesterday) return `${getTranslation(language, 'yesterday')} (${formatted})`;
+
+    return dateObj.toLocaleDateString(
+      language === 'hi' ? 'hi-IN' : language === 'pa' ? 'pa-IN' : 'en-IN',
+      { day: 'numeric', month: 'short', year: 'numeric' }
+    );
   };
 
   const isExpense = editableData.type === 'expense';
@@ -186,6 +226,53 @@ export default function VoiceConfirmationModal() {
 
         {/* Details Checklist (Payment method, date, description) */}
         <div className="space-y-2 mb-5 text-sm">
+          {/* Date Row */}
+          {isEditing ? (
+            <div className="flex flex-col gap-1.5 p-2.5 rounded-xl bg-warm-50 border border-warm-200">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 font-medium text-xs flex items-center gap-1">
+                  <Calendar size={13} className="text-slate-400" />
+                  {getTranslation(language, 'date')}:
+                </span>
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleSetQuickDate(0)}
+                    className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-white border border-warm-300 text-slate-700 active:scale-95 shadow-xs"
+                  >
+                    {getTranslation(language, 'today')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSetQuickDate(1)}
+                    className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-white border border-warm-300 text-slate-700 active:scale-95 shadow-xs"
+                  >
+                    {getTranslation(language, 'yesterday')}
+                  </button>
+                </div>
+              </div>
+              <input
+                type="date"
+                value={toDateInputValue(editableData.date)}
+                onChange={(e) => {
+                  const [y, m, d] = e.target.value.split('-').map(Number);
+                  const newDate = new Date();
+                  newDate.setFullYear(y, m - 1, d);
+                  setEditableData({ ...editableData, date: newDate.toISOString() });
+                }}
+                className="w-full bg-white border border-warm-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-brand-500"
+              />
+            </div>
+          ) : (
+            <div className="flex items-center justify-between py-1.5 px-3 rounded-xl bg-warm-50 border border-warm-200">
+              <span className="text-slate-500 font-medium">{getTranslation(language, 'date')}:</span>
+              <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                <Calendar size={13} className="text-slate-400" />
+                {formatDisplayDate(editableData.date)}
+              </span>
+            </div>
+          )}
+
           <div className="flex items-center justify-between py-1.5 px-3 rounded-xl bg-warm-50 border border-warm-200">
             <span className="text-slate-500 font-medium">{getTranslation(language, 'paymentMethod')}:</span>
             {isEditing ? (

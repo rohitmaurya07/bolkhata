@@ -24,12 +24,37 @@ export default function TransactionCard({ transaction, onEdit }) {
     );
   };
 
-  const formattedDate = transaction.date
-    ? new Date(transaction.date).toLocaleDateString(
+  const formatDateTime = () => {
+    if (!transaction.date) return { dateStr: '', timeStr: '' };
+    const d = new Date(transaction.date);
+    const today = new Date();
+    const isToday = d.toDateString() === today.toDateString();
+
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = d.toDateString() === yesterday.toDateString();
+
+    let dateStr = '';
+    if (isToday) {
+      dateStr = getTranslation(language, 'today');
+    } else if (isYesterday) {
+      dateStr = getTranslation(language, 'yesterday');
+    } else {
+      dateStr = d.toLocaleDateString(
         language === 'hi' ? 'hi-IN' : language === 'pa' ? 'pa-IN' : 'en-IN',
-        { day: 'numeric', month: 'short' }
-      )
-    : '';
+        { day: 'numeric', month: 'short', year: d.getFullYear() !== today.getFullYear() ? 'numeric' : undefined }
+      );
+    }
+
+    const timeStr = d.toLocaleTimeString(
+      language === 'hi' ? 'hi-IN' : language === 'pa' ? 'pa-IN' : 'en-IN',
+      { hour: '2-digit', minute: '2-digit', hour12: true }
+    );
+
+    return { dateStr, timeStr };
+  };
+
+  const { dateStr, timeStr } = formatDateTime();
 
   return (
     <div
@@ -56,15 +81,21 @@ export default function TransactionCard({ transaction, onEdit }) {
             )}
           </div>
 
-          <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 font-medium">
-            <span>{formattedDate}</span>
-            <span>•</span>
+          <div className="flex items-center gap-1.5 mt-1 text-xs text-slate-500 font-medium flex-wrap">
+            <span className="font-bold text-slate-700">{dateStr}</span>
+            {timeStr && (
+              <>
+                <span className="text-slate-300">•</span>
+                <span className="text-slate-400 text-[11px]">{timeStr}</span>
+              </>
+            )}
+            <span className="text-slate-300">•</span>
             <span className="uppercase text-[11px] font-bold tracking-wider px-1.5 py-0.2 rounded bg-warm-200 text-slate-700">
               {getTranslation(language, transaction.paymentMethod || 'cash')}
             </span>
             {transaction.description && (
               <>
-                <span>•</span>
+                <span className="text-slate-300">•</span>
                 <span className="truncate max-w-[120px] text-slate-600">{transaction.description}</span>
               </>
             )}

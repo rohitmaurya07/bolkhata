@@ -12,9 +12,19 @@ export const exportCSV = async (req, res, next) => {
     const { period, startDate, endDate } = req.query;
     const query = { user: req.user._id };
 
-    if (period) {
+    if (period && period !== 'all') {
       const { start, end } = getDateRange(period, startDate, endDate);
       query.date = { $gte: start, $lte: end };
+    } else if (startDate && endDate) {
+      query.date = {
+        $gte: new Date(new Date(startDate).setHours(0, 0, 0, 0)),
+        $lte: new Date(new Date(endDate).setHours(23, 59, 59, 999))
+      };
+    } else if (startDate) {
+      query.date = {
+        $gte: new Date(new Date(startDate).setHours(0, 0, 0, 0)),
+        $lte: new Date(new Date(startDate).setHours(23, 59, 59, 999))
+      };
     }
 
     const transactions = await Transaction.find(query).sort({ date: -1 }).lean();
@@ -40,9 +50,19 @@ export const exportPDF = async (req, res, next) => {
     const { period, startDate, endDate } = req.query;
     const query = { user: req.user._id };
 
-    if (period) {
+    if (period && period !== 'all') {
       const { start, end } = getDateRange(period, startDate, endDate);
       query.date = { $gte: start, $lte: end };
+    } else if (startDate && endDate) {
+      query.date = {
+        $gte: new Date(new Date(startDate).setHours(0, 0, 0, 0)),
+        $lte: new Date(new Date(endDate).setHours(23, 59, 59, 999))
+      };
+    } else if (startDate) {
+      query.date = {
+        $gte: new Date(new Date(startDate).setHours(0, 0, 0, 0)),
+        $lte: new Date(new Date(startDate).setHours(23, 59, 59, 999))
+      };
     }
 
     const transactions = await Transaction.find(query).sort({ date: -1 }).lean();

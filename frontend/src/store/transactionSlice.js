@@ -15,9 +15,9 @@ export const fetchTransactions = createAsyncThunk(
 
 export const fetchSummary = createAsyncThunk(
   'transactions/fetchSummary',
-  async ({ period = 'today', language = 'hi' }, { rejectWithValue }) => {
+  async ({ period = 'today', language = 'hi', startDate, endDate } = {}, { rejectWithValue }) => {
     try {
-      const res = await api.getTransactionSummary(period, language);
+      const res = await api.getTransactionSummary(period, language, startDate, endDate);
       return res;
     } catch (err) {
       return rejectWithValue(err.message);

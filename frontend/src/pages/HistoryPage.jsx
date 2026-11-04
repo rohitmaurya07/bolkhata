@@ -1,27 +1,40 @@
 import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Search, Download, FileText, Filter, Sparkles, X, Edit3, Check } from 'lucide-react';
+import { Search, Download, FileText, Calendar, X, Edit3, Check, ArrowDownRight, ArrowUpRight } from 'lucide-react';
 import { fetchTransactions, updateTransaction } from '../store/transactionSlice.js';
 import FilterTabs from '../components/transactions/FilterTabs.jsx';
 import TransactionCard from '../components/transactions/TransactionCard.jsx';
 import AmountDisplay from '../components/common/AmountDisplay.jsx';
-import CategoryIcon from '../components/common/CategoryIcon.jsx';
 import { getTranslation } from '../utils/i18n.js';
 import { api } from '../api/client.js';
 
 export default function HistoryPage() {
   const dispatch = useDispatch();
   const language = useSelector((state) => state.auth.language) || 'hi';
-  const { items: transactions, period, isLoading } = useSelector((state) => state.transactions);
+  const { items: transactions, period } = useSelector((state) => state.transactions);
 
+  const todayStr = new Date().toISOString().split('T')[0];
   const [activePeriod, setActivePeriod] = useState(period || 'today');
+  const [startDate, setStartDate] = useState(todayStr);
+  const [endDate, setEndDate] = useState(todayStr);
+
   const [typeFilter, setTypeFilter] = useState('all'); // 'all', 'expense', 'income'
   const [searchTerm, setSearchTerm] = useState('');
   const [editingTransaction, setEditingTransaction] = useState(null);
 
   useEffect(() => {
-    dispatch(fetchTransactions({ period: activePeriod }));
-  }, [dispatch, activePeriod]);
+    if (activePeriod === 'custom') {
+      dispatch(fetchTransactions({ period: 'custom', startDate, endDate }));
+    } else {
+      dispatch(fetchTransactions({ period: activePeriod }));
+    }
+  }, [dispatch, activePeriod, startDate, endDate]);
+
+  const handlePeriodChange = (newPeriod, newStart, newEnd) => {
+    setActivePeriod(newPeriod);
+    if (newStart) setStartDate(newStart);
+    if (newEnd) setEndDate(newEnd);
+  };
 
   // Client-side filtering for type and search
   const filteredTransactions = transactions.filter((t) => {
@@ -36,6 +49,58 @@ export default function HistoryPage() {
     return true;
   });
 
+  // Group transactions by date
+  const groupedTransactions = filteredTransactions.reduce((groups, txn) => {
+    const dateObj = txn.date ? new Date(txn.date) : new Date();
+    const dateKey = !isNaN(dateObj.getTime())
+      ? dateObj.toISOString().split('T')[0]
+      : 'unknown';
+
+    if (!groups[dateKey]) {
+      groups[dateKey] = {
+        date: dateObj,
+        items: [],
+        totalExpense: 0,
+        totalIncome: 0,
+      };
+    }
+    groups[dateKey].items.push(txn);
+    if (txn.type === 'expense') {
+      groups[dateKey].totalExpense += Number(txn.amount) || 0;
+    } else {
+      groups[dateKey].totalIncome += Number(txn.amount) || 0;
+    }
+    return groups;
+  }, {});
+
+  const sortedDateKeys = Object.keys(groupedTransactions).sort((a, b) => {
+    if (a === 'unknown') return 1;
+    if (b === 'unknown') return -1;
+    return new Date(b) - new Date(a);
+  });
+
+  const formatGroupHeader = (dateObj) => {
+    if (isNaN(dateObj.getTime())) return getTranslation(language, 'date');
+    const today = new Date();
+    const isToday = dateObj.toDateString() === today.toDateString();
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = dateObj.toDateString() === yesterday.toDateString();
+
+    const formattedDate = dateObj.toLocaleDateString(
+      language === 'hi' ? 'hi-IN' : language === 'pa' ? 'pa-IN' : 'en-IN',
+      { day: 'numeric', month: 'short' }
+    );
+
+    if (isToday) return `${getTranslation(language, 'today')} (${formattedDate})`;
+    if (isYesterday) return `${getTranslation(language, 'yesterday')} (${formattedDate})`;
+
+    return dateObj.toLocaleDateString(
+      language === 'hi' ? 'hi-IN' : language === 'pa' ? 'pa-IN' : 'en-IN',
+      { weekday: 'short', day: 'numeric', month: 'short', year: dateObj.getFullYear() !== today.getFullYear() ? 'numeric' : undefined }
+    );
+  };
+
   const handleSaveEdit = async (e) => {
     e.preventDefault();
     if (!editingTransaction) return;
@@ -47,6 +112,7 @@ export default function HistoryPage() {
           amount: Number(editingTransaction.amount),
           description: editingTransaction.description,
           paymentMethod: editingTransaction.paymentMethod,
+          date: editingTransaction.date,
         },
       })
     );
@@ -63,7 +129,7 @@ export default function HistoryPage() {
 
         <div className="flex items-center gap-2">
           <a
-            href={api.getCSVUrl(activePeriod)}
+            href={api.getCSVUrl(activePeriod, activePeriod === 'custom' ? startDate : undefined, activePeriod === 'custom' ? endDate : undefined)}
             download
             className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white border border-warm-300 text-slate-700 hover:text-brand-700 text-xs font-bold shadow-sm active:scale-95 transition-all"
             title="Download CSV"
@@ -72,7 +138,7 @@ export default function HistoryPage() {
             <span>CSV</span>
           </a>
           <a
-            href={api.getPDFUrl(activePeriod)}
+            href={api.getPDFUrl(activePeriod, activePeriod === 'custom' ? startDate : undefined, activePeriod === 'custom' ? endDate : undefined)}
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-brand-50 border border-brand-200 text-brand-700 text-xs font-bold shadow-sm active:scale-95 transition-all"
@@ -85,7 +151,16 @@ export default function HistoryPage() {
       </div>
 
       {/* Period Filter Tabs */}
-      <FilterTabs activePeriod={activePeriod} onChange={setActivePeriod} />
+      <FilterTabs
+        activePeriod={activePeriod}
+        onChange={handlePeriodChange}
+        startDate={startDate}
+        endDate={endDate}
+        onCustomDateChange={(s, e) => {
+          setStartDate(s);
+          setEndDate(e);
+        }}
+      />
 
       {/* Type Toggle & Search */}
       <div className="flex items-center gap-2">
@@ -118,16 +193,49 @@ export default function HistoryPage() {
         </div>
       </div>
 
-      {/* Transactions List */}
-      <div className="space-y-2 pt-1">
-        {filteredTransactions.length > 0 ? (
-          filteredTransactions.map((txn) => (
-            <TransactionCard
-              key={txn._id || txn.offlineId}
-              transaction={txn}
-              onEdit={setEditingTransaction}
-            />
-          ))
+      {/* Grouped Transactions List by Date */}
+      <div className="space-y-4 pt-1">
+        {sortedDateKeys.length > 0 ? (
+          sortedDateKeys.map((dateKey) => {
+            const group = groupedTransactions[dateKey];
+            return (
+              <div key={dateKey} className="space-y-2">
+                {/* Date Group Header */}
+                <div className="flex items-center justify-between px-1 text-xs">
+                  <div className="flex items-center gap-1.5 font-extrabold text-slate-700">
+                    <Calendar size={13} className="text-brand-600" />
+                    <span>{formatGroupHeader(group.date)}</span>
+                  </div>
+
+                  <div className="flex items-center gap-2 font-bold text-[11px]">
+                    {group.totalExpense > 0 && (
+                      <span className="text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-100 flex items-center gap-0.5">
+                        <ArrowDownRight size={11} />
+                        ₹{group.totalExpense.toLocaleString('en-IN')}
+                      </span>
+                    )}
+                    {group.totalIncome > 0 && (
+                      <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 flex items-center gap-0.5">
+                        <ArrowUpRight size={11} />
+                        ₹{group.totalIncome.toLocaleString('en-IN')}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* List of transaction cards under this date */}
+                <div className="space-y-2">
+                  {group.items.map((txn) => (
+                    <TransactionCard
+                      key={txn._id || txn.offlineId}
+                      transaction={txn}
+                      onEdit={setEditingTransaction}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })
         ) : (
           <div className="p-8 rounded-3xl bg-white border border-warm-300 text-center text-slate-400">
             <p className="font-semibold text-sm">{getTranslation(language, 'noTransactions')}</p>
@@ -167,6 +275,54 @@ export default function HistoryPage() {
                     setEditingTransaction({ ...editingTransaction, amount: e.target.value })
                   }
                   className="w-full p-3 rounded-2xl border border-warm-300 text-2xl font-black text-slate-900 focus:outline-none focus:border-brand-500"
+                  required
+                />
+              </div>
+
+              {/* Date Input with Quick Chips */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-600 block">
+                    {getTranslation(language, 'date')}
+                  </label>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const now = new Date();
+                        setEditingTransaction({ ...editingTransaction, date: now.toISOString() });
+                      }}
+                      className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-warm-200 text-slate-700 hover:bg-brand-50 hover:text-brand-700 active:scale-95"
+                    >
+                      {getTranslation(language, 'today')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const y = new Date();
+                        y.setDate(y.getDate() - 1);
+                        setEditingTransaction({ ...editingTransaction, date: y.toISOString() });
+                      }}
+                      className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-warm-200 text-slate-700 hover:bg-brand-50 hover:text-brand-700 active:scale-95"
+                    >
+                      {getTranslation(language, 'yesterday')}
+                    </button>
+                  </div>
+                </div>
+                <input
+                  type="date"
+                  value={
+                    editingTransaction.date
+                      ? new Date(editingTransaction.date).toISOString().split('T')[0]
+                      : new Date().toISOString().split('T')[0]
+                  }
+                  onChange={(e) => {
+                    const [y, m, d] = e.target.value.split('-').map(Number);
+                    const dt = new Date(editingTransaction.date || Date.now());
+                    dt.setFullYear(y, m - 1, d);
+                    setEditingTransaction({ ...editingTransaction, date: dt.toISOString() });
+                  }}
+                  className="w-full p-3 rounded-2xl bg-white border border-warm-300 text-sm font-semibold text-slate-800 focus:outline-none focus:border-brand-500"
                   required
                 />
               </div>
@@ -219,4 +375,3 @@ export default function HistoryPage() {
     </div>
   );
 }
-

@@ -17,11 +17,24 @@ export default function SummaryPage() {
   const language = useSelector((state) => state.auth.language) || 'hi';
   const { summary, isSummaryLoading } = useSelector((state) => state.transactions);
 
-  const [activePeriod, setActivePeriod] = useState('week'); // 'today', 'yesterday', 'week', 'month'
+  const todayStr = new Date().toISOString().split('T')[0];
+  const [activePeriod, setActivePeriod] = useState('week'); // 'today', 'yesterday', 'week', 'month', 'custom'
+  const [startDate, setStartDate] = useState(todayStr);
+  const [endDate, setEndDate] = useState(todayStr);
 
   useEffect(() => {
-    dispatch(fetchSummary({ period: activePeriod, language }));
-  }, [dispatch, activePeriod, language]);
+    if (activePeriod === 'custom') {
+      dispatch(fetchSummary({ period: 'custom', language, startDate, endDate }));
+    } else {
+      dispatch(fetchSummary({ period: activePeriod, language }));
+    }
+  }, [dispatch, activePeriod, language, startDate, endDate]);
+
+  const handlePeriodChange = (newPeriod, newStart, newEnd) => {
+    setActivePeriod(newPeriod);
+    if (newStart) setStartDate(newStart);
+    if (newEnd) setEndDate(newEnd);
+  };
 
   const chartData = (summary.categoryBreakdown || []).map((cat, idx) => ({
     name: cat.name || getTranslation(language, 'categories', cat.category),
@@ -40,7 +53,7 @@ export default function SummaryPage() {
 
         <div className="flex items-center gap-2">
           <a
-            href={api.getCSVUrl(activePeriod)}
+            href={api.getCSVUrl(activePeriod, activePeriod === 'custom' ? startDate : undefined, activePeriod === 'custom' ? endDate : undefined)}
             download
             className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white border border-warm-300 text-slate-700 hover:text-brand-700 text-xs font-bold shadow-sm active:scale-95 transition-all"
           >
@@ -48,7 +61,7 @@ export default function SummaryPage() {
             <span>CSV</span>
           </a>
           <a
-            href={api.getPDFUrl(activePeriod)}
+            href={api.getPDFUrl(activePeriod, activePeriod === 'custom' ? startDate : undefined, activePeriod === 'custom' ? endDate : undefined)}
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-brand-50 border border-brand-200 text-brand-700 text-xs font-bold shadow-sm active:scale-95 transition-all"
@@ -60,7 +73,16 @@ export default function SummaryPage() {
       </div>
 
       {/* Filter Tabs */}
-      <FilterTabs activePeriod={activePeriod} onChange={setActivePeriod} />
+      <FilterTabs
+        activePeriod={activePeriod}
+        onChange={handlePeriodChange}
+        startDate={startDate}
+        endDate={endDate}
+        onCustomDateChange={(s, e) => {
+          setStartDate(s);
+          setEndDate(e);
+        }}
+      />
 
       {/* Audio Text-To-Speech Summary Player */}
       <AudioSummaryPlayer period={activePeriod} />

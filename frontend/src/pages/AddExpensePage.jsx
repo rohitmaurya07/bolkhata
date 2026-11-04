@@ -34,6 +34,16 @@ export default function AddExpensePage() {
     setAmount(String((Number(amount) || 0) + val));
   };
 
+  const createDateObject = (dateStr) => {
+    if (!dateStr) return new Date();
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (dateStr === todayStr) return new Date();
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date();
+    dt.setFullYear(y, m - 1, d);
+    return dt;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!amount || Number(amount) <= 0) return;
@@ -49,7 +59,7 @@ export default function AddExpensePage() {
           category: selectedCategory,
           categoryName: catName,
           description: description.trim(),
-          date: new Date(date).toISOString(),
+          date: createDateObject(date).toISOString(),
           paymentMethod,
           source: 'manual',
         })
@@ -176,9 +186,43 @@ export default function AddExpensePage() {
         {/* Date and Description Inputs */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-bold text-slate-600 mb-1 block">
-              {getTranslation(language, 'date')}
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-bold text-slate-600 block">
+                {getTranslation(language, 'date')}
+              </label>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => setDate(new Date().toISOString().split('T')[0])}
+                  className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold transition-all ${
+                    date === new Date().toISOString().split('T')[0]
+                      ? 'bg-rose-100 text-rose-700'
+                      : 'bg-warm-200 text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {getTranslation(language, 'today')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const y = new Date();
+                    y.setDate(y.getDate() - 1);
+                    setDate(y.toISOString().split('T')[0]);
+                  }}
+                  className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold transition-all ${
+                    (() => {
+                      const y = new Date();
+                      y.setDate(y.getDate() - 1);
+                      return date === y.toISOString().split('T')[0];
+                    })()
+                      ? 'bg-rose-100 text-rose-700'
+                      : 'bg-warm-200 text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {getTranslation(language, 'yesterday')}
+                </button>
+              </div>
+            </div>
             <input
               type="date"
               value={date}

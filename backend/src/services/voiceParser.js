@@ -355,30 +355,73 @@ export function extractDate(text) {
   const clean = text.toLowerCase();
   const now = new Date();
 
-  // Tomorrow / Kal (future)
-  if (clean.includes('kal') && (clean.includes('dena') || clean.includes('bharna') || clean.includes('aayega') || clean.includes('tomorrow'))) {
-    const tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow;
-  }
-  if (clean.includes('tomorrow')) {
+  // Tomorrow / Kal (future context)
+  const isFutureIntent =
+    clean.includes('dena') ||
+    clean.includes('bharna') ||
+    clean.includes('aayega') ||
+    clean.includes('paina') ||
+    clean.includes('pay karna') ||
+    clean.includes('due') ||
+    clean.includes('tomorrow');
+
+  if (clean.includes('tomorrow') || (/\b(kal|kallh)\b/.test(clean) && isFutureIntent)) {
     const tomorrow = new Date(now);
     tomorrow.setDate(tomorrow.getDate() + 1);
     return tomorrow;
   }
 
-  // Yesterday / Kal (past)
-  if (clean.includes('yesterday') || (clean.includes('kal') && (clean.includes('kiya') || clean.includes('diye') || clean.includes('kitte') || clean.includes('tha')))) {
+  // Day before yesterday / Parso / Parson
+  if (/\b(parso|parson|day before yesterday)\b/.test(clean)) {
+    const dayOffset = isFutureIntent ? 2 : -2;
+    const targetDate = new Date(now);
+    targetDate.setDate(targetDate.getDate() + dayOffset);
+    return targetDate;
+  }
+
+  // Yesterday / Kal / Kallh (past or default transaction context)
+  if (clean.includes('yesterday') || /\b(kal|kallh)\b/.test(clean)) {
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
     return yesterday;
   }
 
-  // Day before yesterday / Parso
-  if (clean.includes('parso') || clean.includes('day before yesterday')) {
-    const dayBefore = new Date(now);
-    dayBefore.setDate(dayBefore.getDate() - 2);
-    return dayBefore;
+  // Day of the week (e.g. Somwar / Monday / Itwar / Sunday)
+  const daysOfWeek = {
+    sunday: 0, itwar: 0, ravivar: 0, aitwar: 0,
+    monday: 1, somwar: 1, peer: 1,
+    tuesday: 2, mangalwar: 2, mangal: 2,
+    wednesday: 3, budhwar: 3, budh: 3,
+    thursday: 4, guruwar: 4, veervar: 4, brihaspatiwar: 4,
+    friday: 5, shukrawar: 5, shukkarwar: 5, jumma: 5,
+    saturday: 6, shaniwar: 6, sanicharwar: 6, sanichar: 6,
+  };
+
+  for (const [dayName, targetDayNum] of Object.entries(daysOfWeek)) {
+    const regex = new RegExp(`\\b${dayName}\\b`, 'i');
+    if (regex.test(clean)) {
+      const targetDate = new Date(now);
+      const currentDay = targetDate.getDay();
+      let diff = currentDay - targetDayNum;
+      if (diff <= 0) diff += 7; // Go to last occurrence
+      targetDate.setDate(targetDate.getDate() - diff);
+      return targetDate;
+    }
+  }
+
+  // Specific date like "5 tareekh", "5 tarikh", "5 date", "5th"
+  const dateMatch = clean.match(/\b(\d{1,2})\s*(?:tareekh|tarikh|tareek|tarik|date|th|st|nd|rd)\b/);
+  if (dateMatch) {
+    const day = parseInt(dateMatch[1], 10);
+    if (day >= 1 && day <= 31) {
+      const targetDate = new Date(now);
+      targetDate.setDate(day);
+      if (targetDate > now && !isFutureIntent) {
+        // If it falls in the future but intent is expense, assume previous month
+        targetDate.setMonth(targetDate.getMonth() - 1);
+      }
+      return targetDate;
+    }
   }
 
   // Default: Today
