@@ -1,0 +1,12 @@
+{
+  "name": "bolkhata",
+  "version": "1.0.0",
+  "description": "BolKhata — MERN Voice-First Expense Tracker",
+  "scripts": {
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "test:backend": "npm --prefix backend test",
+    "build:frontend": "npm --prefix frontend run build"
+  }
+}
+
