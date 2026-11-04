@@ -1,24 +1,39 @@
 /**
- * Modular Speech Recognition and Speech Synthesis Adapter for BolKhata
+ * Robust Modular Speech Recognition and Speech Synthesis Adapter for BolKhata
  */
 
 class SpeechAdapter {
   constructor() {
     this.recognition = null;
     this.isListening = false;
-    this.isSupported = false;
     this.synth = typeof window !== 'undefined' && 'speechSynthesis' in window ? window.speechSynthesis : null;
+    this.voices = [];
 
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        this.recognition = new SpeechRecognition();
-        this.isSupported = true;
-        this.recognition.continuous = false;
-        this.recognition.interimResults = true;
-        this.recognition.maxAlternatives = 1;
+    // Warm up voices when available
+    if (this.synth) {
+      this.voices = this.synth.getVoices() || [];
+      if (this.synth.onvoiceschanged !== undefined) {
+        this.synth.onvoiceschanged = () => {
+          this.voices = this.synth.getVoices() || [];
+        };
       }
     }
+  }
+
+  /**
+   * Check if browser supports Web Speech Recognition
+   */
+  get isSupported() {
+    if (typeof window === 'undefined') return false;
+    return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  }
+
+  /**
+   * Get SpeechRecognition constructor
+   */
+  getRecognitionConstructor() {
+    if (typeof window === 'undefined') return null;
+    return window.SpeechRecognition || window.webkitSpeechRecognition || null;
   }
 
   /**
@@ -29,7 +44,7 @@ class SpeechAdapter {
       case 'hi':
         return 'hi-IN';
       case 'pa':
-        return 'pa-Guru-IN'; // Punjabi Gurmukhi India; fallback will also understand Hindi/Punjabi words
+        return 'pa-IN'; // Punjabi India (falls back to hi-IN recognition where pa-IN engine is unavailable)
       case 'en':
       default:
         return 'en-IN';
@@ -37,76 +52,133 @@ class SpeechAdapter {
   }
 
   /**
-   * Start listening for voice input
+   * Clean up and abort any currently running recognition instance
+   */
+  cleanupRecognition() {
+    if (this.recognition) {
+      try {
+        this.recognition.onstart = null;
+        this.recognition.onresult = null;
+        this.recognition.onerror = null;
+        this.recognition.onend = null;
+        this.recognition.abort();
+      } catch (_) {}
+      this.recognition = null;
+    }
+    this.isListening = false;
+  }
+
+  /**
+   * Start listening for voice input.
+   * Creates a fresh SpeechRecognition instance on every session to eliminate InvalidStateError.
    */
   startListening({ language = 'hi', onResult, onEnd, onError, onStart }) {
-    if (!this.isSupported || !this.recognition) {
-      if (onError) onError(new Error('Speech recognition is not supported in this browser.'));
-      return false;
+    const SpeechRecognition = this.getRecognitionConstructor();
+
+    if (!SpeechRecognition) {
+      if (onError) onError({ error: 'not-supported', message: 'Speech recognition is not supported in this browser.' });
+      return { started: false, error: 'not_supported' };
     }
 
-    if (this.isListening) {
-      this.stopListening();
-    }
+    // Clean up any stale/in-progress instance
+    this.cleanupRecognition();
 
     try {
-      this.recognition.lang = this.getLanguageLocale(language);
+      const recognition = new SpeechRecognition();
+      this.recognition = recognition;
 
-      this.recognition.onstart = () => {
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+      recognition.lang = this.getLanguageLocale(language);
+
+      let finalTranscript = '';
+      let interimTranscript = '';
+      let hasReceivedResult = false;
+
+      recognition.onstart = () => {
         this.isListening = true;
         if (onStart) onStart();
       };
 
-      this.recognition.onresult = (event) => {
-        let interimTranscript = '';
-        let finalTranscript = '';
+      recognition.onresult = (event) => {
+        hasReceivedResult = true;
+        interimTranscript = '';
 
         for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript;
+          const item = event.results[i];
+          if (item.isFinal) {
+            finalTranscript += item[0].transcript;
           } else {
-            interimTranscript += event.results[i][0].transcript;
+            interimTranscript += item[0].transcript;
           }
         }
 
-        if (onResult) {
+        const currentText = finalTranscript || interimTranscript;
+        if (onResult && currentText) {
           onResult({
-            transcript: finalTranscript || interimTranscript,
+            transcript: currentText,
             isFinal: !!finalTranscript,
           });
         }
       };
 
-      this.recognition.onerror = (event) => {
+      recognition.onerror = (event) => {
         this.isListening = false;
-        console.warn('[BolKhata SpeechAdapter] Recognition error:', event.error);
-        if (onError) onError(event);
+        console.warn('[BolKhata SpeechAdapter] Recognition error event:', event.error);
+
+        // 'no-speech' is non-fatal: user simply didn't speak in time
+        if (event.error === 'no-speech') {
+          if (onError) onError({ error: 'no-speech', message: 'No speech was detected. Please tap and speak.' });
+          return;
+        }
+
+        // 'aborted' happens when stopped by user or restarted
+        if (event.error === 'aborted') {
+          return;
+        }
+
+        if (onError) {
+          onError(event);
+        }
       };
 
-      this.recognition.onend = () => {
+      recognition.onend = () => {
         this.isListening = false;
-        if (onEnd) onEnd();
+        const total = (finalTranscript || interimTranscript).trim();
+        if (onEnd) {
+          onEnd(total);
+        }
       };
 
-      this.recognition.start();
-      return true;
+      recognition.start();
+      return { started: true };
     } catch (err) {
       this.isListening = false;
-      if (onError) onError(err);
-      return false;
+      console.warn('[BolKhata SpeechAdapter] Exception during recognition.start():', err);
+
+      // If already started or transitioning, try one clean reset
+      if (err.name === 'InvalidStateError') {
+        this.cleanupRecognition();
+      }
+
+      if (onError) onError({ error: err.name || 'start-failed', message: err.message });
+      return { started: false, error: err.name || 'failed' };
     }
   }
 
   /**
-   * Stop listening
+   * Stop listening cleanly
    */
   stopListening() {
-    if (this.recognition && this.isListening) {
+    if (this.recognition) {
       try {
         this.recognition.stop();
-      } catch (_) {}
-      this.isListening = false;
+      } catch (_) {
+        this.cleanupRecognition();
+      }
     }
+    this.isListening = false;
   }
 
   /**
@@ -115,29 +187,39 @@ class SpeechAdapter {
   speak(text, { language = 'hi', rate = 1.0, onEnd } = {}) {
     if (!this.synth || !text) return false;
 
-    // Cancel any previous speaking
-    this.synth.cancel();
+    try {
+      // Cancel any currently active speaking
+      this.synth.cancel();
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = this.getLanguageLocale(language);
-    utterance.rate = Math.min(1.5, Math.max(0.7, rate));
-    utterance.pitch = 1.0;
+      const utterance = new SpeechSynthesisUtterance(text);
+      const targetLang = this.getLanguageLocale(language);
+      utterance.lang = targetLang;
+      utterance.rate = Math.min(1.4, Math.max(0.7, rate));
+      utterance.pitch = 1.0;
 
-    // Pick best available voice for language if available
-    const voices = this.synth.getVoices();
-    const targetLang = utterance.lang.toLowerCase();
-    const voice = voices.find(v => v.lang.toLowerCase().startsWith(targetLang.slice(0, 2)));
-    if (voice) {
-      utterance.voice = voice;
+      // Select best matching voice
+      const voices = this.voices.length > 0 ? this.voices : (this.synth.getVoices() || []);
+      const langPrefix = targetLang.slice(0, 2).toLowerCase();
+
+      const matchingVoice = voices.find(v => v.lang.toLowerCase().replace('_', '-').startsWith(targetLang.toLowerCase()))
+        || voices.find(v => v.lang.toLowerCase().startsWith(langPrefix))
+        || voices.find(v => v.default);
+
+      if (matchingVoice) {
+        utterance.voice = matchingVoice;
+      }
+
+      if (onEnd) {
+        utterance.onend = onEnd;
+        utterance.onerror = onEnd;
+      }
+
+      this.synth.speak(utterance);
+      return true;
+    } catch (err) {
+      console.warn('[BolKhata SpeechAdapter] TTS speak error:', err);
+      return false;
     }
-
-    if (onEnd) {
-      utterance.onend = onEnd;
-      utterance.onerror = onEnd;
-    }
-
-    this.synth.speak(utterance);
-    return true;
   }
 
   /**
@@ -145,7 +227,9 @@ class SpeechAdapter {
    */
   stopSpeaking() {
     if (this.synth) {
-      this.synth.cancel();
+      try {
+        this.synth.cancel();
+      } catch (_) {}
     }
   }
 
@@ -158,4 +242,3 @@ class SpeechAdapter {
 }
 
 export const speechAdapter = new SpeechAdapter();
-

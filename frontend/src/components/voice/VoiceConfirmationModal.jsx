@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Check, X, RotateCcw, Edit3, AlertTriangle, ArrowDownRight, ArrowUpRight } from 'lucide-react';
+import { Check, X, RotateCcw, Edit3, AlertTriangle, ArrowDownRight, ArrowUpRight, Volume2 } from 'lucide-react';
 import { closeConfirmationModal, openVoiceModal } from '../../store/uiSlice.js';
 import { addTransaction } from '../../store/transactionSlice.js';
 import { addPlannedExpense } from '../../store/plannedSlice.js';
+import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis.js';
 import CategoryIcon from '../common/CategoryIcon.jsx';
 import AmountDisplay from '../common/AmountDisplay.jsx';
 import BigButton from '../common/BigButton.jsx';
@@ -14,6 +15,7 @@ export default function VoiceConfirmationModal() {
   const dispatch = useDispatch();
   const { confirmationModal } = useSelector((state) => state.ui);
   const language = useSelector((state) => state.auth.language) || 'hi';
+  const { speak } = useSpeechSynthesis();
 
   const { isOpen, parsedData, rawVoiceText, confirmationPrompt, isAmbiguous } = confirmationModal;
 
@@ -26,6 +28,18 @@ export default function VoiceConfirmationModal() {
       setIsEditing(isAmbiguous); // Open edit fields directly if input was ambiguous!
     }
   }, [parsedData, isAmbiguous]);
+
+  const handleReplaySpoken = () => {
+    let spokenText = '';
+    if (language === 'hi') {
+      spokenText = `आपने कहा: "${rawVoiceText || ''}"। ${confirmationPrompt || ''}`;
+    } else if (language === 'pa') {
+      spokenText = `ਤੁਸੀਂ ਕਿਹਾ: "${rawVoiceText || ''}"। ${confirmationPrompt || ''}`;
+    } else {
+      spokenText = `You said: "${rawVoiceText || ''}". ${confirmationPrompt || ''}`;
+    }
+    speak(spokenText, language);
+  };
 
   if (!isOpen || !editableData) return null;
 
@@ -149,11 +163,24 @@ export default function VoiceConfirmationModal() {
             {editableData.categoryName || getTranslation(language, 'categories', editableData.category)}
           </p>
 
-          {/* Raw spoken utterance */}
+          {/* Raw spoken utterance with replay button */}
           {rawVoiceText && (
-            <p className="text-xs text-slate-500 italic mt-1 text-center line-clamp-1">
-              &ldquo;{rawVoiceText}&rdquo;
-            </p>
+            <div className="flex items-center gap-2 mt-2 px-3 py-1 rounded-full bg-white border border-warm-300 shadow-sm">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                {language === 'hi' ? 'आपने कहा:' : language === 'pa' ? 'ਤੁਸੀਂ ਕਿਹਾ:' : 'You said:'}
+              </span>
+              <p className="text-xs text-slate-800 font-bold italic truncate max-w-[180px]">
+                &ldquo;{rawVoiceText}&rdquo;
+              </p>
+              <button
+                type="button"
+                onClick={handleReplaySpoken}
+                className="p-1 rounded-full text-brand-600 hover:text-brand-800 hover:bg-brand-50 active:scale-90 transition-all shrink-0"
+                title="Hear user words repeated"
+              >
+                <Volume2 size={16} />
+              </button>
+            </div>
           )}
         </div>
 

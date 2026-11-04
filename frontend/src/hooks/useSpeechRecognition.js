@@ -33,17 +33,35 @@ export function useSpeechRecognition() {
       if (result.intent === 'query_summary') {
         const period = result.period || 'today';
         const summaryRes = await dispatch(fetchSummary({ period, language })).unwrap();
-        if (summaryRes?.speechSummary) {
-          speak(summaryRes.speechSummary, language);
-        }
         dispatch(closeVoiceModal());
         navigate('/summary');
+
+        // Repeat the user's spoken question followed by the summary
+        let querySpeech = '';
+        if (language === 'hi') {
+          querySpeech = `आपने पूछा: "${textToParse}"। ${summaryRes?.speechSummary || ''}`;
+        } else if (language === 'pa') {
+          querySpeech = `ਤੁਸੀਂ ਪੁੱਛਿਆ: "${textToParse}"। ${summaryRes?.speechSummary || ''}`;
+        } else {
+          querySpeech = `You asked: "${textToParse}". ${summaryRes?.speechSummary || ''}`;
+        }
+        speak(querySpeech, language);
         return;
       }
 
       if (result.intent === 'query_history') {
         dispatch(closeVoiceModal());
         navigate('/history');
+
+        let historySpeech = '';
+        if (language === 'hi') {
+          historySpeech = `आपने कहा: "${textToParse}"। लेनदेन का इतिहास दिखाया जा रहा है।`;
+        } else if (language === 'pa') {
+          historySpeech = `ਤੁਸੀਂ ਕਿਹਾ: "${textToParse}"। ਲੈਣ-ਦੇਣ ਦਾ ਇਤਿਹਾਸ ਦਿਖਾਇਆ ਜਾ ਰਿਹਾ ਹੈ।`;
+        } else {
+          historySpeech = `You said: "${textToParse}". Showing transaction history.`;
+        }
+        speak(historySpeech, language);
         return;
       }
 
@@ -59,10 +77,17 @@ export function useSpeechRecognition() {
         })
       );
 
-      // Play audio prompt if prompt text exists
-      if (result.confirmationPrompt) {
-        speak(result.confirmationPrompt, language);
+      // Speak back the user's exact spoken words repeated by TTS, followed by confirmation prompt
+      let spokenConfirmation = '';
+      if (language === 'hi') {
+        spokenConfirmation = `आपने कहा: "${textToParse}"। ${result.confirmationPrompt || ''}`;
+      } else if (language === 'pa') {
+        spokenConfirmation = `ਤੁਸੀਂ ਕਿਹਾ: "${textToParse}"। ${result.confirmationPrompt || ''}`;
+      } else {
+        spokenConfirmation = `You said: "${textToParse}". ${result.confirmationPrompt || ''}`;
       }
+
+      speak(spokenConfirmation, language);
     } catch (err) {
       console.error('[BolKhata Voice] Parse error:', err);
       setErrorMessage(err.message || 'Could not understand voice input. Please try again.');
@@ -76,35 +101,69 @@ export function useSpeechRecognition() {
     finalTranscriptRef.current = '';
     setErrorMessage('');
 
-    const started = speechAdapter.startListening({
+    // Check actual browser capability
+    if (!speechAdapter.isSupported) {
+      setErrorMessage(
+        language === 'hi'
+          ? 'आपके ब्राउज़र में आवाज़ पहचान समर्थित नहीं है। कृपया लिखकर दर्ज करें।'
+          : language === 'pa'
+          ? 'ਇਸ ਬ੍ਰਾਊਜ਼ਰ ਵਿੱਚ ਆਵਾਜ਼ ਪਛਾਣ ਸਮਰਥਿਤ ਨਹੀਂ ਹੈ। ਕਿਰਪਾ ਕਰਕੇ ਲਿਖ ਕੇ ਦਰਜ ਕਰੋ।'
+          : 'Speech recognition is not supported in this browser. Please use manual entry.'
+      );
+      return;
+    }
+
+    const res = speechAdapter.startListening({
       language,
-      onStart: () => setIsListening(true),
+      onStart: () => {
+        setIsListening(true);
+        setErrorMessage('');
+      },
       onResult: ({ transcript: text, isFinal }) => {
         setTranscript(text);
         if (isFinal) {
           finalTranscriptRef.current = text;
         }
       },
-      onEnd: () => {
+      onEnd: (totalTranscript) => {
         setIsListening(false);
-        const textToProcess = finalTranscriptRef.current || transcript;
+        const textToProcess = totalTranscript || finalTranscriptRef.current;
         if (textToProcess && textToProcess.trim()) {
           processVoiceText(textToProcess);
         }
       },
       onError: (err) => {
         setIsListening(false);
-        const msg = err.error === 'not-allowed'
-          ? 'Microphone permission denied. Please allow microphone access or use manual entry.'
-          : 'Microphone was not able to detect sound. Please try again.';
-        setErrorMessage(msg);
+        if (err.error === 'no-speech') {
+          setErrorMessage(
+            language === 'hi'
+              ? 'आवाज़ सुनाई नहीं दी। कृपया माइक बटन दबाकर दोबारा बोलें।'
+              : language === 'pa'
+              ? 'ਕੋਈ ਆਵਾਜ਼ ਨਹੀਂ ਆਈ। ਕਿਰਪਾ ਕਰਕੇ ਦੁਬਾਰਾ ਬੋਲੋ।'
+              : 'No speech detected. Please tap the mic and speak clearly.'
+          );
+        } else if (err.error === 'not-allowed') {
+          setErrorMessage(
+            language === 'hi'
+              ? 'माइक की अनुमति नहीं मिली। कृपया ब्राउज़र में माइक्रोफ़ोन की अनुमति दें।'
+              : 'Microphone permission denied. Please allow microphone access in your browser.'
+          );
+        } else if (err.error === 'audio-capture') {
+          setErrorMessage('No microphone found or microphone is busy.');
+        } else {
+          setErrorMessage('Microphone temporarily busy. Please tap mic again to speak.');
+        }
       },
     });
 
-    if (!started) {
-      setErrorMessage('Speech recognition is not supported in this browser. Please use manual entry.');
+    if (!res.started && res.error === 'not_supported') {
+      setErrorMessage(
+        language === 'hi'
+          ? 'आपके ब्राउज़र में आवाज़ पहचान समर्थित नहीं है। कृपया लिखकर दर्ज करें।'
+          : 'Speech recognition is not supported in this browser. Please use manual entry.'
+      );
     }
-  }, [language, processVoiceText, transcript]);
+  }, [language, processVoiceText]);
 
   const stopListening = useCallback(() => {
     speechAdapter.stopListening();
@@ -122,4 +181,3 @@ export function useSpeechRecognition() {
     processVoiceText,
   };
 }
-
