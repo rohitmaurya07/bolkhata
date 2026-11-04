@@ -3,6 +3,9 @@ import { connectDB } from './config/db.js';
 import { ensureDefaultCategories } from './controllers/categoryController.js';
 import { seedDemoData } from './utils/seedData.js';
 
+
+// second commit
+
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
